@@ -251,7 +251,13 @@ def load_or_train_model(base_dir: Path = BASE_DIR) -> dict[str, Any]:
     ]
     for model_file in candidate_paths:
         if model_file.exists():
-            return joblib.load(model_file)
+            try:
+                return joblib.load(model_file)
+            except Exception:
+                # Em ambientes como Streamlit Cloud, diferencas de versao de
+                # Python ou dependencias podem invalidar artefatos serializados.
+                # Nesses casos, reexecutamos o treinamento a partir da camada raw.
+                break
     return train_and_save_model(base_dir=base_dir)
 
 
