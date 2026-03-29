@@ -1,0 +1,9 @@
+streamlit
+requests
+pandas
+numpy
+joblib
+scikit-learn
+fastapi
+uvicorn
+pydantic
