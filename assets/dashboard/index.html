@@ -1,0 +1,889 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PRISMA | Dashboard Integrado v6.2</title>
+    <!-- Import Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Import Plugin DataLabels -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+
+    <link
+      href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-color: #050505;
+        --card-bg: #141414;
+
+        /* --- COR: GROWTH GREEN (#00E096) --- */
+        /* RGB: 0, 224, 150 */
+        --brand-green: #00e096;
+
+        /* Variantes calculadas para transparência */
+        --brand-green-dim: rgba(0, 224, 150, 0.1); /* Fundo sutil */
+        --brand-green-glow: rgba(0, 224, 150, 0.25); /* Brilho */
+        --brand-green-shadow: rgba(0, 224, 150, 0.6); /* Sombra forte */
+
+        --neon-red: #ff3b30;
+        --neon-yellow: #ffd60a;
+
+        --text-main: #ffffff;
+        --text-muted: #8f9ba3;
+        --section-header-bg: rgba(0, 224, 150, 0.05);
+      }
+
+      body {
+        background-color: var(--bg-color);
+        color: var(--text-main);
+        font-family: "Roboto", sans-serif;
+        margin: 0;
+        padding: 20px;
+        overflow-x: hidden;
+      }
+
+      /* HEADER */
+      .header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #222;
+      }
+
+      .header-left {
+        display: flex;
+        align-items: center;
+        gap: 20px;
+      }
+
+      /* LOGO STYLE */
+      .logo-img {
+        height: 50px;
+        width: auto;
+        border-radius: 4px;
+        filter: drop-shadow(0 0 8px var(--brand-green-shadow));
+      }
+
+      .header h1 {
+        color: var(--brand-green);
+        font-size: 1.8rem;
+        margin: 0;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        line-height: 1;
+      }
+
+      /* NAVIGATION CONTROLS */
+      .nav-controls {
+        display: flex;
+        gap: 15px;
+      }
+
+      .nav-btn {
+        background: transparent;
+        border: 1px solid #333;
+        color: var(--text-muted);
+        padding: 10px 20px;
+        font-size: 0.9rem;
+        font-weight: bold;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        cursor: pointer;
+        border-radius: 4px;
+        transition: all 0.3s ease;
+        min-width: 180px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+      }
+
+      .nav-btn:hover {
+        border-color: var(--brand-green);
+        color: white;
+        box-shadow: 0 0 10px var(--brand-green-glow);
+      }
+
+      .nav-btn.active {
+        background: var(--brand-green-dim);
+        border-color: var(--brand-green);
+        color: var(--brand-green);
+        box-shadow: 0 0 15px var(--brand-green-glow);
+      }
+
+      /* SECTIONS - CONTROLLED BY JS */
+      .view-section {
+        display: none;
+        animation: fadeIn 0.5s ease-in-out;
+      }
+
+      .view-section.active-view {
+        display: block;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* SECTIONS TITLE STYLE */
+      .section-title {
+        color: var(--brand-green);
+        font-size: 1.2rem;
+        margin: 0 0 20px 0;
+        padding: 10px 20px;
+        background: var(--section-header-bg);
+        border-left: 4px solid var(--brand-green);
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      /* GRID SYSTEM */
+      .dashboard-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 20px;
+        max-width: 1600px;
+        margin: 0 auto;
+      }
+
+      /* CARD STYLES */
+      .card {
+        background-color: var(--card-bg);
+        border-radius: 8px;
+        padding: 24px;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+        border: 1px solid #333;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+        transition: transform 0.2s;
+      }
+
+      .card:hover {
+        transform: translateY(-2px);
+        border-color: var(--brand-green);
+      }
+
+      .card h3 {
+        margin: 0 0 15px 0;
+        font-size: 0.85rem;
+        color: var(--text-muted);
+        text-transform: uppercase;
+        letter-spacing: 1.5px;
+        font-weight: 700;
+      }
+
+      .h-medium {
+        height: 340px;
+      }
+      .h-large {
+        height: 420px;
+      }
+      .span-2 {
+        grid-column: span 2;
+      }
+      .span-4 {
+        grid-column: span 4;
+      }
+
+      /* KPI STYLES */
+      .kpi-value {
+        font-size: 2.5rem;
+        font-weight: 700;
+        margin: 5px 0;
+        letter-spacing: -1px;
+      }
+      .kpi-sub {
+        font-size: 0.9rem;
+        color: var(--text-muted);
+        margin-bottom: 5px;
+      }
+      .kpi-badge {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: bold;
+        margin-top: 5px;
+      }
+      .bg-green {
+        background: var(--brand-green-dim);
+        color: var(--brand-green);
+      }
+      .bg-red {
+        background: rgba(255, 59, 48, 0.15);
+        color: var(--neon-red);
+      }
+      .bg-yellow {
+        background: rgba(255, 214, 10, 0.15);
+        color: var(--neon-yellow);
+      }
+
+      /* FUNNEL */
+      .funnel-container {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        height: 100%;
+        justify-content: center;
+      }
+      .funnel-bar {
+        height: 40px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        padding: 0 15px;
+        font-weight: bold;
+        color: #0b0c10;
+        position: relative;
+        transition: width 1s ease-out;
+      }
+      .fb-1 {
+        width: 100%;
+        background: #238666;
+        color: white;
+      }
+      .fb-2 {
+        width: 30%;
+        background: var(--neon-red);
+        color: white;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .fb-3 {
+        width: 70%;
+        background: var(--brand-green);
+        margin-left: 0;
+        box-shadow: 0 0 15px var(--brand-green-glow);
+      }
+
+      /* ALERTS TABLE */
+      .alert-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.85rem;
+      }
+      .alert-table th {
+        text-align: left;
+        color: var(--brand-green);
+        padding: 10px 5px;
+        border-bottom: 1px solid var(--brand-green);
+      }
+      .alert-table td {
+        padding: 12px 5px;
+        border-bottom: 1px solid #333;
+        color: #ddd;
+      }
+      .status-dot {
+        height: 8px;
+        width: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 5px;
+      }
+
+      @keyframes pulse {
+        0% {
+          opacity: 0.7;
+        }
+        50% {
+          opacity: 1;
+        }
+        100% {
+          opacity: 0.7;
+        }
+      }
+
+      /* Responsive */
+      @media (max-width: 1200px) {
+        .dashboard-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+        .span-4 {
+          grid-column: span 2;
+        }
+      }
+      @media (max-width: 768px) {
+        .dashboard-grid {
+          grid-template-columns: 1fr;
+        }
+        .span-2,
+        .span-4 {
+          grid-column: span 1;
+        }
+        .header {
+          flex-direction: column;
+          gap: 20px;
+          text-align: center;
+        }
+        .header-left {
+          flex-direction: column;
+        }
+        .nav-controls {
+          width: 100%;
+          flex-direction: column;
+        }
+        .nav-btn {
+          width: 100%;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="header">
+      <div class="header-left">
+        <img src="prisma_logo.png" alt="Logo Prisma" class="logo-img" />
+
+        <div style="text-align: left">
+          <h1>
+            PRISMA
+            <span
+              style="font-size: 1rem; color: var(--brand-green); opacity: 0.7"
+              >| INTELIGÊNCIA</span
+            >
+          </h1>
+        </div>
+      </div>
+
+      <!-- NAVEGAÇÃO NO HEADER (DIREITA) -->
+      <div class="nav-controls">
+        <button
+          class="nav-btn active"
+          onclick="switchView('strategic')"
+          id="btn-strategic"
+        >
+          💎 Visão Estratégica
+        </button>
+        <button
+          class="nav-btn"
+          onclick="switchView('tactical')"
+          id="btn-tactical"
+        >
+          ⚙️ Visão Tática
+        </button>
+      </div>
+    </div>
+
+    <!-- ========================================= -->
+    <!-- VIEW 1: VISÃO ESTRATÉGICA                 -->
+    <!-- ========================================= -->
+
+    <div id="view-strategic" class="view-section active-view">
+      <div class="section-title">
+        Painel Executivo: Impacto Financeiro & ROI
+      </div>
+
+      <div class="dashboard-grid">
+        <!-- KPI 1.1 -->
+        <div class="card">
+          <h3>Prejuízo Evitado</h3>
+          <div class="kpi-value" style="color: var(--brand-green)">
+            R$ 5.2 Mi
+          </div>
+          <div class="kpi-badge bg-green">▲ Capital Protegido</div>
+          <div class="kpi-sub" style="margin-top: 10px">
+            Prejuízo real evitado via bloqueio de ativos tóxicos.
+          </div>
+        </div>
+
+        <!-- KPI 1.2 -->
+        <div class="card">
+          <h3>Otimização de Retorno</h3>
+          <div class="kpi-value" style="color: var(--neon-yellow)">+1.50%</div>
+          <div class="kpi-badge bg-yellow">▲ Rentabilidade a.a.</div>
+          <div class="kpi-sub" style="margin-top: 10px">
+            Spread adicional sobre o benchmark (CDI) da carteira.
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Inadimplência</h3>
+          <div class="kpi-value" style="color: var(--brand-green)">7.1%</div>
+          <div class="kpi-badge bg-green">▼ -39% vs Mercado</div>
+          <div class="kpi-sub" style="margin-top: 10px">
+            Performance superior à média histórica (11.7%).
+          </div>
+        </div>
+
+        <!-- KPI 1.4: VaR -->
+        <div class="card">
+          <h3>VaR (Risco Diário)</h3>
+          <div class="kpi-value" style="color: white">R$ 450k</div>
+          <div class="kpi-badge bg-green">▼ Baixa Exposição</div>
+          <div class="kpi-sub" style="margin-top: 10px">
+            Perda máxima esperada com 95% de confiança.
+          </div>
+        </div>
+
+        <!-- CHARTS SLIDE 1 -->
+        <div class="card h-medium span-2">
+          <h3>Funil de Eficiência de Crédito</h3>
+          <div class="funnel-container">
+            <div>
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  margin-bottom: 5px;
+                  font-size: 0.8rem;
+                "
+              >
+                <span>Entrada (Bruto)</span> <span>7,118 Ativos</span>
+              </div>
+              <div class="funnel-bar fb-1">R$ 166 Milhões</div>
+            </div>
+            <div>
+              <div
+                style="
+                  display: flex;
+                  justify-content: center;
+                  margin-bottom: 5px;
+                  font-size: 0.8rem;
+                  color: var(--neon-red);
+                "
+              >
+                ▼ Bloqueio Automático
+              </div>
+              <div class="funnel-bar fb-2">2,118 Rejeitados (30%)</div>
+            </div>
+            <div>
+              <div
+                style="
+                  display: flex;
+                  justify-content: space-between;
+                  margin-bottom: 5px;
+                  font-size: 0.8rem;
+                  color: var(--brand-green);
+                "
+              >
+                <span>Carteira Premium (Aprovada)</span>
+                <span>5,000 Ativos</span>
+              </div>
+              <div class="funnel-bar fb-3">R$ 115 Milhões (Líquido)</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card h-medium span-2">
+          <h3>A "Bola de Cristal": Liquidez vs. Probabilidade de Calote</h3>
+          <canvas id="chartLiquidez"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================= -->
+    <!-- VIEW 2: VISÃO TÁTICA                      -->
+    <!-- ========================================= -->
+
+    <div id="view-tactical" class="view-section">
+      <div class="section-title">Painel Operacional: Monitoramento & Ação</div>
+
+      <div class="dashboard-grid">
+        <div class="card">
+          <h3>Taxa de Rejeição</h3>
+          <div class="kpi-value" style="color: var(--neon-red)">31%</div>
+          <div class="kpi-sub">Ativos Tóxicos Barrados</div>
+          <div style="font-size: 0.8rem; color: #666; margin-top: 5px">
+            Meta de segurança: > 25%
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Cedentes em Risco</h3>
+          <div class="kpi-value" style="color: var(--neon-red)">5</div>
+          <div class="kpi-sub">Watchlist (Prioridade Alta)</div>
+          <div style="font-size: 0.8rem; color: #666; margin-top: 5px">
+            Parceiros com Default > 50%
+          </div>
+        </div>
+
+        <!-- KPI 2.3: Rating Médio -->
+        <div class="card">
+          <h3>Rating Médio</h3>
+          <div class="kpi-value" style="color: var(--brand-green)">
+            945 / 1000
+          </div>
+          <div class="kpi-badge bg-green">▲ High Grade</div>
+          <div class="kpi-sub" style="margin-top: 10px">
+            Pontuação média de crédito dos sacados aprovados.
+          </div>
+        </div>
+
+        <!-- KPI 2.4: Concentração Top 10 -->
+        <div class="card">
+          <h3>Concentração Top 10</h3>
+          <div class="kpi-value" style="color: var(--brand-green)">12%</div>
+          <div class="kpi-badge bg-green">✔ Pulverizado</div>
+          <div class="kpi-sub" style="margin-top: 10px">
+            % do PL exposto nos 10 maiores devedores.
+          </div>
+        </div>
+
+        <!-- CHARTS SLIDE 2 -->
+
+        <div class="card h-large span-2">
+          <h3>Radar de Seleção Adversa (Top Ofensores)</h3>
+          <canvas id="chartCedentes"></canvas>
+          <p
+            style="
+              font-size: 0.8rem;
+              color: #666;
+              margin-top: 10px;
+              text-align: center;
+            "
+          >
+            Cedentes acima da linha vermelha devem ser suspensos imediatamente.
+          </p>
+        </div>
+
+        <div class="card h-large span-2">
+          <h3>🚨 Painel de Ação Imediata (Alertas Antecipados)</h3>
+          <div style="overflow-y: auto; padding-right: 5px">
+            <table class="alert-table">
+              <thead>
+                <tr>
+                  <th>Status</th>
+                  <th>CNPJ (Sacado)</th>
+                  <th>Motivo do Alerta</th>
+                  <th>Liquidez</th>
+                </tr>
+              </thead>
+              <tbody id="alertTableBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card h-medium span-4">
+          <h3>Concentração de Risco por Setor (Top 5 CNAEs)</h3>
+          <canvas id="chartSetores"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <div
+      style="
+        text-align: center;
+        margin-top: 50px;
+        color: #333;
+        font-size: 0.8rem;
+      "
+    >
+      PRISMA Intelligence System • Developed for Enterprise Challenge 2025
+    </div>
+
+    <script>
+      Chart.register(ChartDataLabels);
+
+      function switchView(viewName) {
+        document
+          .querySelectorAll(".view-section")
+          .forEach((el) => el.classList.remove("active-view"));
+        document
+          .querySelectorAll(".nav-btn")
+          .forEach((el) => el.classList.remove("active"));
+        document
+          .getElementById("view-" + viewName)
+          .classList.add("active-view");
+        document.getElementById("btn-" + viewName).classList.add("active");
+      }
+
+      // --- NOVA COR VERDE PROFISSIONAL (#00E096) ---
+      const BRAND_GREEN = "#00E096";
+      const BRAND_GREEN_DIM = "rgba(0, 224, 150, 0.1)";
+
+      Chart.defaults.color = "#8F9BA3";
+      Chart.defaults.borderColor = "#333";
+      Chart.defaults.font.family = "'Roboto', sans-serif";
+      Chart.defaults.plugins.datalabels.display = false;
+
+      // ALERTS DATA
+      const alertsData = [
+        {
+          s: "red",
+          cnpj: "12.993.***/0001-45",
+          m: "Queda Brusca Liquidez (-40%)",
+          l: "0.12",
+        },
+        {
+          s: "red",
+          cnpj: "08.112.***/0001-12",
+          m: "Inadimplência Recente",
+          l: "0.18",
+        },
+        {
+          s: "yellow",
+          cnpj: "33.554.***/0001-90",
+          m: "Score Materialidade em Queda",
+          l: "0.45",
+        },
+        {
+          s: "red",
+          cnpj: "04.221.***/0001-33",
+          m: "Setor em Crise (Conservas)",
+          l: "0.29",
+        },
+        {
+          s: "yellow",
+          cnpj: "10.888.***/0001-88",
+          m: "Atraso Técnico (3 dias)",
+          l: "0.55",
+        },
+        {
+          s: "green",
+          cnpj: "55.123.***/0001-22",
+          m: "Recuperação de Score",
+          l: "0.71",
+        },
+        {
+          s: "red",
+          cnpj: "99.123.***/0001-00",
+          m: "Pedido de Recuperação Judicial",
+          l: "0.05",
+        },
+      ];
+
+      const tbody = document.getElementById("alertTableBody");
+      alertsData.forEach((r) => {
+        const color =
+          r.s === "red"
+            ? "#FF3B30"
+            : r.s === "yellow"
+              ? "#FFD60A"
+              : BRAND_GREEN;
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+                <td><span class="status-dot" style="background-color: ${color}; box-shadow: 0 0 5px ${color};"></span></td>
+                <td style="color: white; font-weight: 500;">${r.cnpj}</td>
+                <td>${r.m}</td>
+                <td style="color: ${r.l < 0.3 ? "#FF3B30" : "#fff"}; font-weight: bold;">${r.l}</td>
+            `;
+        tbody.appendChild(tr);
+      });
+
+      // --- CHARTS ---
+
+      // 1. LIQUIDEZ (Bola de Cristal)
+      new Chart(document.getElementById("chartLiquidez"), {
+        type: "line",
+        data: {
+          labels: [
+            "0.1",
+            "0.2",
+            "0.3",
+            "0.4",
+            "0.5",
+            "0.6",
+            "0.7",
+            "0.8",
+            "0.9",
+            "1.0",
+          ],
+          datasets: [
+            {
+              label: "Probabilidade de Calote (%)",
+              data: [82.0, 65.5, 35.4, 29.4, 19.0, 22.3, 13.1, 9.4, 5.3, 1.9],
+              borderColor: BRAND_GREEN,
+              backgroundColor: BRAND_GREEN_DIM,
+              fill: true,
+              tension: 0.4,
+              borderWidth: 3,
+              pointBackgroundColor: "#0B0C10",
+              pointBorderColor: BRAND_GREEN,
+              pointBorderWidth: 2,
+              pointRadius: 6,
+              datalabels: {
+                display: true,
+                align: "top",
+                anchor: "start",
+                offset: 8,
+                color: "#FFFFFF",
+                font: { weight: "bold", size: 11 },
+                formatter: function (value) {
+                  return value + "%";
+                },
+              },
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { top: 20 } },
+          plugins: { legend: { display: false } },
+          scales: {
+            y: {
+              title: {
+                display: true,
+                text: "Risco de Default",
+                color: "#FFFFFF",
+              },
+              grid: { borderDash: [5, 5] },
+              suggestedMax: 100,
+              ticks: { color: "#8F9BA3" },
+            },
+            x: {
+              title: {
+                display: true,
+                text: "Índice de Liquidez",
+                color: "#FFFFFF",
+              },
+              grid: { display: false },
+              ticks: { color: "#8F9BA3" },
+            },
+          },
+        },
+      });
+
+      // 2. CEDENTES (Radar)
+      new Chart(document.getElementById("chartCedentes"), {
+        type: "bar",
+        data: {
+          labels: [
+            "Cedente A",
+            "Cedente B",
+            "Cedente C",
+            "Cedente D",
+            "Cedente E",
+          ],
+          datasets: [
+            {
+              label: "Risco Inadimplência (%)",
+              data: [89.5, 83.3, 76.8, 66.6, 57.1],
+              backgroundColor: "#FF3B30",
+              yAxisID: "y",
+              order: 2,
+              datalabels: {
+                display: true,
+                color: "#FFFFFF",
+                anchor: "end",
+                align: "top",
+                font: { weight: "bold", size: 10 },
+                formatter: function (value) {
+                  return value + "%";
+                },
+              },
+            },
+            {
+              label: "Volume (R$ k)",
+              data: [10, 29, 64, 4, 5],
+              type: "line",
+              borderColor: "#FFFFFF",
+              borderDash: [5, 5],
+              pointStyle: "rectRot",
+              pointRadius: 6,
+              yAxisID: "y1",
+              order: 1,
+              datalabels: {
+                display: true,
+                color: "#FFFFFF",
+                align: "bottom",
+                anchor: "start",
+                offset: 4,
+                font: { weight: "bold", size: 11 },
+                formatter: function (value) {
+                  return "R$ " + value + "k";
+                },
+                backgroundColor: "#1F2833",
+                borderRadius: 3,
+                padding: 4,
+              },
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          layout: { padding: { top: 25 } },
+          plugins: { legend: { labels: { color: "#fff" } } },
+          scales: {
+            y: {
+              position: "left",
+              title: { display: true, text: "Risco (%)", color: "#FFFFFF" },
+              grid: { color: "#333" },
+              suggestedMax: 110,
+              ticks: { color: "#FFFFFF" },
+            },
+            y1: {
+              position: "right",
+              title: {
+                display: true,
+                text: "Volume Financeiro",
+                color: "#FFFFFF",
+              },
+              grid: { display: false },
+              suggestedMax: 80,
+              ticks: { color: "#FFFFFF" },
+            },
+            x: {
+              grid: { display: false },
+              ticks: { color: "#FFFFFF" },
+            },
+          },
+        },
+      });
+
+      // 3. SETORES - WITH INTERNAL LABELS
+      new Chart(document.getElementById("chartSetores"), {
+        type: "bar",
+        data: {
+          labels: [
+            "Ind. Conservas",
+            "Atac. Medicamentos",
+            "Ind. Têxtil",
+            "Proc. Alimentos",
+            "Transporte Cargas",
+          ],
+          datasets: [
+            {
+              label: "Taxa de Inadimplência (%)",
+              data: [77.4, 74.3, 55.6, 52.6, 43.9],
+              backgroundColor: [
+                "#FF3B30",
+                "#FF3B30",
+                BRAND_GREEN,
+                BRAND_GREEN,
+                "#238666",
+              ],
+              borderRadius: 4,
+              // ADDED DATALABELS CONFIG
+              datalabels: {
+                display: true,
+                color: "#FFFFFF",
+                anchor: "end",
+                align: "start", // 'start' aligns it inside the bar at the end (right side for horizontal bars)
+                font: { weight: "bold", size: 11 },
+                formatter: function (value) {
+                  return value + "%";
+                },
+              },
+            },
+          ],
+        },
+        options: {
+          indexAxis: "y",
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { color: "#333" } },
+            y: { grid: { display: false } },
+          },
+        },
+      });
+    </script>
+  </body>
+</html>
