@@ -227,6 +227,7 @@ def build_company_enrichment(cnpj: str, timeout: float = 8.0) -> dict[str, Any]:
 
     return {
         "cnpj": receita["cnpj"],
+        "real_cnpj_enrichment": True,
         "consultado_em": datetime.now().isoformat(timespec="seconds"),
         "receita_federal": receita,
         "bureau": bureau,

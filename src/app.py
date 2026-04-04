@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 import json
 from pathlib import Path
+from typing import Any
+import numpy as np
 import pandas as pd
 import requests
 import streamlit as st
@@ -34,6 +36,86 @@ except ImportError:
 st.set_page_config(page_title="PRISMA | Gestao de Risco FIDC", layout="wide")
 
 API_URL = "http://127.0.0.1:8000"
+PRISMA_GREEN = "#00E096"
+UFS_BRASIL = [
+    "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT",
+    "PA", "PB", "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
+]
+CNAE_DIVISION_LABELS = {
+    "10": "Industria de Transformacao (Fabricacao de produtos alimenticios)",
+    "11": "Industria de Transformacao (Fabricacao de bebidas)",
+    "13": "Industria de Transformacao (Fabricacao de produtos texteis)",
+    "14": "Industria de Transformacao (Confeccao de artigos do vestuario e acessorios)",
+    "15": "Industria de Transformacao (Preparacao de couros e fabricacao de calcados)",
+    "16": "Industria de Transformacao (Fabricacao de produtos de madeira)",
+    "17": "Industria de Transformacao (Fabricacao de celulose, papel e produtos de papel)",
+    "18": "Industria de Transformacao (Impressao e reproducao de gravacoes)",
+    "19": "Industria de Transformacao (Coque, derivados de petroleo e biocombustiveis)",
+    "20": "Industria de Transformacao (Fabricacao de produtos quimicos)",
+    "21": "Industria de Transformacao (Fabricacao de produtos farmoquimicos e farmaceuticos)",
+    "22": "Industria de Transformacao (Fabricacao de produtos de borracha e de material plastico)",
+    "23": "Industria de Transformacao (Fabricacao de produtos de minerais nao-metalicos)",
+    "24": "Industria de Transformacao (Metalurgia)",
+    "25": "Industria de Transformacao (Fabricacao de produtos de metal, exceto maquinas e equipamentos)",
+    "26": "Industria de Transformacao (Fabricacao de equipamentos de informatica, produtos eletronicos e opticos)",
+    "27": "Industria de Transformacao (Fabricacao de maquinas, aparelhos e materiais eletricos)",
+    "28": "Industria de Transformacao (Fabricacao de maquinas e equipamentos)",
+    "29": "Industria de Transformacao (Fabricacao de veiculos automotores, reboques e carrocerias)",
+    "30": "Industria de Transformacao (Fabricacao de outros equipamentos de transporte)",
+    "31": "Industria de Transformacao (Fabricacao de moveis)",
+    "32": "Industria de Transformacao (Fabricacao de produtos diversos)",
+    "33": "Industria de Transformacao (Manutencao, reparacao e instalacao de maquinas e equipamentos)",
+    "35": "Eletricidade e Gas (Eletricidade, gas e outras utilidades)",
+    "36": "Agua, Esgoto e Gestao de Residuos (Captacao, tratamento e distribuicao de agua)",
+    "37": "Agua, Esgoto e Gestao de Residuos (Esgoto e atividades relacionadas)",
+    "38": "Agua, Esgoto e Gestao de Residuos (Coleta, tratamento e disposicao de residuos)",
+    "39": "Agua, Esgoto e Gestao de Residuos (Descontaminacao e outros servicos de gestao de residuos)",
+    "41": "Construcao (Construcao de edificios)",
+    "42": "Construcao (Obras de infraestrutura)",
+    "43": "Construcao (Servicos especializados para construcao)",
+    "45": "Comercio; Reparacao de Veiculos (Comercio e reparacao de veiculos automotores e motocicletas)",
+    "46": "Comercio (Comercio por atacado, exceto veiculos automotores e motocicletas)",
+    "47": "Comercio (Comercio varejista)",
+    "49": "Transporte e Armazenagem (Transporte terrestre)",
+    "50": "Transporte e Armazenagem (Transporte aquaviario)",
+    "51": "Transporte e Armazenagem (Transporte aereo)",
+    "52": "Transporte e Armazenagem (Armazenamento e atividades auxiliares dos transportes)",
+    "53": "Transporte e Armazenagem (Correio e outras atividades de entrega)",
+    "55": "Alojamento e Alimentacao (Alojamento)",
+    "56": "Alojamento e Alimentacao (Alimentacao)",
+    "58": "Informacao e Comunicacao (Edicao e edicao integrada a impressao)",
+    "59": "Informacao e Comunicacao (Atividades cinematograficas, producao de videos e de programas de televisao)",
+    "60": "Informacao e Comunicacao (Atividades de radio e de televisao)",
+    "61": "Informacao e Comunicacao (Telecomunicacoes)",
+    "62": "Informacao e Comunicacao (Atividades dos servicos de tecnologia da informacao)",
+    "63": "Informacao e Comunicacao (Atividades de prestacao de servicos de informacao)",
+    "64": "Atividades Financeiras, de Seguros e Servicos Relacionados (Atividades de servicos financeiros)",
+    "65": "Atividades Financeiras, de Seguros e Servicos Relacionados (Seguros, resseguros, previdencia complementar e planos de saude)",
+    "66": "Atividades Financeiras, de Seguros e Servicos Relacionados (Atividades auxiliares dos servicos financeiros, seguros e previdencia complementar)",
+    "68": "Atividades Imobiliarias",
+    "69": "Atividades Profissionais, Cientificas e Tecnicas (Atividades juridicas, de contabilidade e de auditoria)",
+    "70": "Atividades Profissionais, Cientificas e Tecnicas (Atividades de sedes de empresas e consultoria em gestao empresarial)",
+    "71": "Atividades Profissionais, Cientificas e Tecnicas (Servicos de arquitetura e engenharia; testes e analises tecnicas)",
+    "72": "Atividades Profissionais, Cientificas e Tecnicas (Pesquisa e desenvolvimento cientifico)",
+    "73": "Atividades Profissionais, Cientificas e Tecnicas (Publicidade e pesquisa de mercado)",
+    "74": "Atividades Profissionais, Cientificas e Tecnicas (Outras atividades profissionais, cientificas e tecnicas)",
+    "75": "Atividades Profissionais, Cientificas e Tecnicas (Atividades veterinarias)",
+    "77": "Atividades Administrativas e Servicos Complementares (Alugueis nao-imobiliarios e gestao de ativos intangiveis)",
+    "78": "Atividades Administrativas e Servicos Complementares (Selecao, agenciamento e locacao de mao de obra)",
+    "80": "Atividades Administrativas e Servicos Complementares (Atividades de vigilancia, seguranca e investigacao)",
+    "81": "Atividades Administrativas e Servicos Complementares (Servicos para edificios e atividades paisagisticas)",
+    "82": "Atividades Administrativas e Servicos Complementares (Servicos de escritorio, apoio administrativo e outros servicos)",
+    "85": "Educacao",
+    "86": "Saude Humana e Servicos Sociais (Atividades de atencao a saude humana)",
+    "87": "Saude Humana e Servicos Sociais (Atividades de atencao a saude humana integradas com assistencia social, prestadas em residencias coletivas)",
+    "88": "Saude Humana e Servicos Sociais (Servicos de assistencia social sem alojamento)",
+    "89": "Saude Humana e Servicos Sociais (Servicos de assistencia social sem alojamento)",
+    "90": "Artes, Cultura, Esporte e Recreacao (Atividades artisticas, criativas e de espetaculos)",
+    "93": "Artes, Cultura, Esporte e Recreacao (Atividades esportivas e de recreacao e lazer)",
+    "94": "Outras Atividades de Servicos (Atividades de organizacoes associativas)",
+    "95": "Outras Atividades de Servicos (Reparacao e manutencao de equipamentos de informatica e objetos pessoais)",
+    "96": "Outras Atividades de Servicos (Outras atividades de servicos pessoais)",
+}
 
 
 @st.cache_resource
@@ -123,11 +205,62 @@ def format_currency_compact(value: float) -> str:
     return f"R$ {value:,.0f}".replace(",", ".")
 
 
+def build_form_options(scored: pd.DataFrame) -> dict[str, list[str]]:
+    def clean_sorted(values: pd.Series) -> list[str]:
+        items = sorted({str(value).strip() for value in values.dropna().astype(str) if str(value).strip() and str(value).strip() != "Desconhecido"})
+        return items
+
+    cnae_sacado = clean_sorted(scored.get("cd_cnae_prin_sacado", pd.Series(dtype=object)))
+    cnae_cedente = clean_sorted(scored.get("cd_cnae_prin_cedente", pd.Series(dtype=object)))
+
+    return {
+        "uf_options": UFS_BRASIL,
+        "cnae_sacado_options": cnae_sacado,
+        "cnae_cedente_options": cnae_cedente,
+    }
+
+
+def format_cnae_option(option: str) -> str:
+    option = str(option).strip()
+    if not option:
+        return "Selecionar"
+    numeric = option.split(".")[0]
+    prefix = numeric[:2]
+    description = CNAE_DIVISION_LABELS.get(prefix)
+    if description:
+        return f"{description} | CNAE {numeric}"
+    return f"CNAE {numeric}"
+
+
+def render_rule_banner(result: dict) -> None:
+    approved = result["status"] == "Aprovado"
+    border = "#1f9d71" if approved else "#FF5A5F"
+    background = "rgba(0, 224, 150, 0.12)" if approved else "rgba(255, 90, 95, 0.12)"
+    label = "Regua favoravel" if approved else "Regua de bloqueio"
+    html = f"""
+    <div style="
+        margin: 0.6rem 0 1rem 0;
+        padding: 0.9rem 1rem;
+        border-radius: 12px;
+        border: 1px solid {border};
+        background: {background};
+        color: #f3fff9;
+        font-size: 0.95rem;
+    ">
+        <strong style="color:{border};">{label}</strong><br>
+        Regua aplicada: <strong>{result['regua_inadimplencia_aplicada']:.0f}%</strong> |
+        Valor nominal analisado: <strong>{format_currency_compact(result['valor_nominal_analisado'])}</strong> |
+        Ticket medio de referencia: <strong>{format_currency_compact(result['ticket_medio_referencia'])}</strong>
+    </div>
+    """
+    st.markdown(html, unsafe_allow_html=True)
+
+
 def build_dashboard_payload(scored: pd.DataFrame) -> dict:
     total_titulos = int(len(scored))
     volume_total = float(scored["vlr_nominal"].fillna(0).sum())
     aprovados = scored[scored["decisao_credito"] == "Aprovado"].copy()
-    bloqueados = scored[scored["decisao_credito"] == "Bloquear"].copy()
+    bloqueados = scored[scored["decisao_credito"] == "Negado"].copy()
     watchlist = scored[scored["decisao_credito"] != "Aprovado"].copy()
 
     blocked_volume = float(bloqueados["vlr_nominal"].fillna(0).sum())
@@ -172,12 +305,12 @@ def build_dashboard_payload(scored: pd.DataFrame) -> dict:
     )
     sector_labels = [f"CNAE {int(value)}" if pd.notna(value) else "Nao informado" for value in top_setores["cd_cnae_prin_sacado"]]
     sector_values = [round(float(value * 100), 1) for value in top_setores["risco"]]
-    sector_colors = ["#FF3B30" if value >= 18 else "#00E096" for value in sector_values]
+    sector_colors = ["#FF3B30" if value >= 15 else "#00E096" for value in sector_values]
 
     alerts_rows = scored.sort_values(["probabilidade_inadimplencia", "vlr_nominal"], ascending=[False, False]).head(7)
     alerts = []
     for _, row in alerts_rows.iterrows():
-        status = "red" if row["decisao_credito"] == "Bloquear" else ("yellow" if row["decisao_credito"] == "Analise Manual" else "green")
+        status = "red" if row["decisao_credito"] == "Negado" else "green"
         sacado = str(row.get("id_pagador", "Sem ID"))
         alerts.append(
             {
@@ -310,6 +443,163 @@ def render_header() -> None:
             border: 1px solid rgba(122, 240, 193, 0.32);
             color: #7af0c1;
             background: rgba(122, 240, 193, 0.08);
+        }
+        .stTabs [data-baseweb="tab-highlight"] {
+            background: #00E096 !important;
+        }
+        .stTabs [data-baseweb="tab-list"] > div {
+            background: transparent !important;
+        }
+        button[data-baseweb="tab"][aria-selected="true"] {
+            color: #00E096 !important;
+            border-bottom: none !important;
+            box-shadow: none !important;
+        }
+        button[data-baseweb="tab"] {
+            color: #d6e7e0 !important;
+            border-bottom: none !important;
+        }
+        div[data-baseweb="tab-list"] {
+            border-bottom: 1px solid rgba(124, 138, 150, 0.18) !important;
+            box-shadow: none !important;
+        }
+        div[data-baseweb="select"] > div {
+            background-color: rgba(35, 37, 48, 0.95) !important;
+        }
+        .stSlider {
+            background: transparent !important;
+        }
+        .stSlider > div {
+            background: transparent !important;
+        }
+        .stSlider [data-baseweb="slider"] {
+            background: transparent !important;
+        }
+        .stSlider [data-baseweb="slider"] > div {
+            background: transparent !important;
+        }
+        .stSlider [data-baseweb="slider"] > div > div > div {
+            background: #ffffff !important;
+        }
+        .stSlider [data-baseweb="slider"]::before,
+        .stSlider [data-baseweb="slider"]::after {
+            background: transparent !important;
+        }
+        .stSlider [data-baseweb="slider"] > div > div {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .stSlider [role="slider"],
+        .stSlider [role="slider"]:focus,
+        .stSlider [role="slider"]:hover {
+            background: #ffffff !important;
+            border: 2px solid #d8dde3 !important;
+            box-shadow: none !important;
+        }
+        .stSlider [data-testid="stThumbValue"] {
+            color: #00E096 !important;
+        }
+        .stSlider [data-testid="stThumbValue"] * {
+            color: #00E096 !important;
+        }
+        .stSlider p,
+        .stSlider span {
+            color: #ffffff !important;
+        }
+        .stSlider [data-testid="stSliderTickBarMin"],
+        .stSlider [data-testid="stSliderTickBarMax"] {
+            background: transparent !important;
+            color: #00E096 !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .stSlider [data-testid="stSliderTickBarMin"] *,
+        .stSlider [data-testid="stSliderTickBarMax"] * {
+            background: transparent !important;
+            color: #00E096 !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .stSlider div[data-testid="stSliderTickBarMin"],
+        .stSlider div[data-testid="stSliderTickBarMax"],
+        .stSlider div[data-testid="stSliderTickBarMin"] > *,
+        .stSlider div[data-testid="stSliderTickBarMax"] > * {
+            background-color: transparent !important;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .stSlider div[data-testid="stSliderTickBarMin"] p,
+        .stSlider div[data-testid="stSliderTickBarMax"] p,
+        .stSlider div[data-testid="stSliderTickBarMin"] span,
+        .stSlider div[data-testid="stSliderTickBarMax"] span,
+        .stSlider [data-testid="stThumbValue"] p,
+        .stSlider [data-testid="stThumbValue"] span {
+            color: #00E096 !important;
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .stSlider [data-testid="stSliderTickBarMin"] label,
+        .stSlider [data-testid="stSliderTickBarMax"] label,
+        .stSlider [data-testid="stSliderTickBarMin"] div,
+        .stSlider [data-testid="stSliderTickBarMax"] div {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+            color: #00E096 !important;
+        }
+        .stSlider [data-testid="stSliderTickBarMin"],
+        .stSlider [data-testid="stSliderTickBarMax"] {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .stSlider [data-testid="stSliderTickBarMin"]::before,
+        .stSlider [data-testid="stSliderTickBarMin"]::after,
+        .stSlider [data-testid="stSliderTickBarMax"]::before,
+        .stSlider [data-testid="stSliderTickBarMax"]::after {
+            content: none !important;
+            background: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .stSlider div[data-testid="stTickBar"] {
+            background: transparent !important;
+            background-color: transparent !important;
+            border: none !important;
+            box-shadow: none !important;
+        }
+        .stSlider [data-testid="stThumbValue"],
+        .stSlider [data-testid="stThumbValue"] *,
+        .stSlider [data-testid="stThumbValue"] p,
+        .stSlider [data-testid="stThumbValue"] span,
+        .stSlider [data-testid="stThumbValue"] div,
+        .stSlider [data-testid="stThumbValue"] label,
+        .stSlider [data-testid="stSliderThumbValue"] p,
+        .stSlider [data-testid="stSliderThumbValue"] .stMarkdownContainer p {
+            color: #00E096 !important;
+        }
+        .stSlider [data-testid="stSliderTickBar"] p,
+        .stSlider [data-testid="stSliderTickBar"] .stMarkdownContainer p,
+        .stSlider [data-testid="stSliderTickBarMin"] p,
+        .stSlider [data-testid="stSliderTickBarMax"] p {
+            color: #ffffff !important;
+        }
+        .stMarkdownContainer,
+        .stMarkdownContainer *,
+        .stMarkdownContainer p,
+        .stMarkdownContainer span,
+        .stMarkdownContainer label,
+        .stMarkdownContainer div {
+            background: transparent !important;
+            background-color: transparent !important;
+            box-shadow: none !important;
         }
         </style>
         <div class="hero">
@@ -456,7 +746,261 @@ def render_dashboard_html(scored: pd.DataFrame) -> None:
         st.error("Arquivo 'index.html' não encontrado.")
 
 
-def render_simulator(bundle: dict) -> None:
+def render_dashboard_insights(scored: pd.DataFrame, bundle: dict[str, Any]) -> None:
+    st.markdown("### Inteligencia Analitica do PRISMA")
+
+    volume_decisao = (
+        scored.groupby("decisao_credito", dropna=False)["vlr_nominal"]
+        .sum()
+        .sort_values(ascending=False)
+        .rename("volume")
+        .reset_index()
+    )
+    volume_decisao["volume_milhoes"] = volume_decisao["volume"] / 1_000_000
+
+    cedente_columns = [
+        "id_beneficiario",
+        "cedente_volume_historico",
+        "cedente_taxa_default",
+        "cedente_ticket_medio",
+        "score_cedente_proprio",
+    ]
+    cedente_view = scored[cedente_columns].drop_duplicates("id_beneficiario").copy()
+    cedente_view["cedente_taxa_default"] = cedente_view["cedente_taxa_default"].fillna(0)
+
+    top_volume_financeiro = (
+        scored.groupby("id_beneficiario", dropna=False)
+        .agg(
+            volume_total=("vlr_nominal", "sum"),
+            ticket_medio=("vlr_nominal", "mean"),
+            taxa_risco=("probabilidade_inadimplencia", "mean"),
+            qtd_boletos=("id_boleto", "count"),
+        )
+        .reset_index()
+        .sort_values("volume_total", ascending=False)
+    )
+    top_ticket = top_volume_financeiro.sort_values("ticket_medio", ascending=False).head(10)
+    top_risco = top_volume_financeiro.sort_values(["taxa_risco", "volume_total"], ascending=[False, False]).head(10)
+    cedentes_alerta = cedente_view[
+        (cedente_view["cedente_volume_historico"].fillna(0) > 5)
+        & (cedente_view["cedente_taxa_default"] > 0.2)
+    ].sort_values(["cedente_taxa_default", "cedente_volume_historico"], ascending=[False, False])
+
+    comparative_rows = []
+    evolution = bundle.get("model_evolution", {})
+    for key, label in (
+        ("baseline_interno", "Modelo Interno"),
+        ("modelo_enriquecido", "Modelo Enriquecido"),
+    ):
+        metrics = evolution.get(key, {}).get("metrics", {})
+        comparative_rows.append(
+            {
+                "Etapa do Modelo": label,
+                "Acuracia Geral": f"{metrics.get('accuracy', 0) * 100:.2f}%",
+                "Deteccao de Risco (Recall)": f"{metrics.get('recall', 0) * 100:.2f}%",
+                "Precisao (Acerto no Risco)": f"{metrics.get('precision', 0) * 100:.2f}%",
+                "ROC AUC": f"{metrics.get('roc_auc', 0):.3f}",
+                "PR AUC": f"{metrics.get('pr_auc', 0):.3f}",
+            }
+        )
+    evolution_df = pd.DataFrame(comparative_rows)
+
+    delay_curve = bundle.get("delay_curve", {})
+    delay_df = pd.DataFrame(
+        {
+            "dias_atraso": delay_curve.get("dias", []),
+            "curva_percentual": delay_curve.get("curva_percentual", []),
+        }
+    )
+    if len(delay_df) > 200:
+        delay_df = delay_df.iloc[np.linspace(0, len(delay_df) - 1, 200).astype(int)]
+
+    feature_importance = pd.DataFrame(bundle.get("feature_importance", []))
+    if not feature_importance.empty:
+        feature_importance["feature_label"] = feature_importance["feature"].str.replace(
+            r"^(num|cat)__", "", regex=True
+        )
+
+    cenarios = [
+        (
+            "Ativo saudavel",
+            {
+                "vlr_nominal": 15000.0,
+                "tipo_especie": "DM DUPLICATA MERCANTIL",
+                "referencia_pagador": "cenario-saudavel-pagador",
+                "referencia_beneficiario": "cenario-saudavel-cedente",
+                "media_atraso_dias_sacado": 2.0,
+                "score_materialidade_v2_sacado": 850.0,
+                "score_quantidade_v2_sacado": 880.0,
+                "sacado_indice_liquidez_1m_sacado": 0.85,
+                "media_atraso_dias_cedente": 2.0,
+                "score_materialidade_v2_cedente": 850.0,
+                "score_quantidade_v2_cedente": 860.0,
+                "cedente_indice_liquidez_1m_cedente": 0.82,
+                "indicador_liquidez_quantitativo_3m_cedente": 0.80,
+            },
+        ),
+        (
+            "Ativo estressado",
+            {
+                "vlr_nominal": 80000.0,
+                "tipo_especie": "DM DUPLICATA MERCANTIL",
+                "referencia_pagador": "cenario-ruim-pagador",
+                "referencia_beneficiario": "cenario-ruim-cedente",
+                "media_atraso_dias_sacado": 90.0,
+                "score_materialidade_v2_sacado": 120.0,
+                "score_quantidade_v2_sacado": 80.0,
+                "sacado_indice_liquidez_1m_sacado": 0.10,
+                "media_atraso_dias_cedente": 40.0,
+                "score_materialidade_v2_cedente": 200.0,
+                "score_quantidade_v2_cedente": 180.0,
+                "cedente_indice_liquidez_1m_cedente": 0.18,
+                "indicador_liquidez_quantitativo_3m_cedente": 0.15,
+            },
+        ),
+        (
+            "Ativo limitrofe",
+            {
+                "vlr_nominal": 18000.0,
+                "tipo_especie": "DM DUPLICATA MERCANTIL",
+                "referencia_pagador": "cenario-bbb-pagador",
+                "referencia_beneficiario": "cenario-bbb-cedente",
+                "media_atraso_dias_sacado": 12.0,
+                "score_materialidade_v2_sacado": 580.0,
+                "score_quantidade_v2_sacado": 650.0,
+                "sacado_indice_liquidez_1m_sacado": 0.68,
+                "media_atraso_dias_cedente": 7.0,
+                "score_materialidade_v2_cedente": 720.0,
+                "score_quantidade_v2_cedente": 760.0,
+                "cedente_indice_liquidez_1m_cedente": 0.75,
+                "indicador_liquidez_quantitativo_3m_cedente": 0.72,
+            },
+        ),
+    ]
+    scenarios_df = pd.DataFrame(
+        [
+            {
+                "Cenario": nome,
+                "Probabilidade": f"{result['probabilidade_inadimplencia']:.2f}%",
+                "Decisao": result["status"],
+                "Regua": f"{result['regua_inadimplencia_aplicada']:.0f}%",
+                "Acao": result["acao_recomendada"],
+            }
+            for nome, payload in cenarios
+            for result in [predict_from_payload(payload, bundle)]
+        ]
+    )
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("#### Volume por Classe de Decisao")
+        st.bar_chart(volume_decisao.set_index("decisao_credito")["volume_milhoes"])
+    with right:
+        st.markdown("#### Curva Cumulativa de Atrasos")
+        if not delay_df.empty:
+            st.line_chart(delay_df.set_index("dias_atraso")["curva_percentual"])
+            st.caption(
+                f"{delay_curve.get('share_ate_threshold', 0) * 100:.2f}% dos boletos pagos ficaram em ate "
+                f"{delay_curve.get('threshold_dias', 5)} dias de atraso."
+            )
+        else:
+            st.caption("Sem atraso observavel suficiente para construir a curva.")
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("#### Comparativo Baseline Interno vs Modelo Enriquecido")
+        st.dataframe(evolution_df, use_container_width=True, hide_index=True)
+    with right:
+        st.markdown("#### Variaveis Mais Relevantes do Modelo")
+        if not feature_importance.empty:
+            st.dataframe(
+                feature_importance[["feature_label", "importance"]].rename(
+                    columns={"feature_label": "Variavel", "importance": "Importancia"}
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.caption("Importancias de variaveis indisponiveis.")
+
+    st.markdown("#### Inteligencia do Cedente")
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("Cedentes monitorados", f"{cedente_view['id_beneficiario'].nunique():,}".replace(",", "."))
+    col_b.metric("Cedentes alerta", f"{len(cedentes_alerta):,}".replace(",", "."))
+    col_c.metric("Maior taxa de default", f"{cedente_view['cedente_taxa_default'].max() * 100:.1f}%")
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("#### Top Cedentes por Volume")
+        st.dataframe(
+            top_volume_financeiro.head(10).rename(
+                columns={
+                    "id_beneficiario": "Cedente",
+                    "volume_total": "Volume Total",
+                    "ticket_medio": "Ticket Medio",
+                    "taxa_risco": "Taxa de Risco",
+                    "qtd_boletos": "Qtd Boletos",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+    with right:
+        st.markdown("#### Top Cedentes por Taxa de Risco")
+        st.dataframe(
+            top_risco.rename(
+                columns={
+                    "id_beneficiario": "Cedente",
+                    "volume_total": "Volume Total",
+                    "ticket_medio": "Ticket Medio",
+                    "taxa_risco": "Taxa de Risco",
+                    "qtd_boletos": "Qtd Boletos",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("#### Ranking de Ticket Medio por Cedente")
+        st.dataframe(
+            top_ticket.rename(
+                columns={
+                    "id_beneficiario": "Cedente",
+                    "volume_total": "Volume Total",
+                    "ticket_medio": "Ticket Medio",
+                    "taxa_risco": "Taxa de Risco",
+                    "qtd_boletos": "Qtd Boletos",
+                }
+            ),
+            use_container_width=True,
+            hide_index=True,
+        )
+    with right:
+        st.markdown("#### Cedentes Alerta: Volume > 5 e Default > 20%")
+        if cedentes_alerta.empty:
+            st.caption("Nenhum cedente em alerta com a regua atual.")
+        else:
+            st.dataframe(
+                cedentes_alerta.rename(
+                    columns={
+                        "id_beneficiario": "Cedente",
+                        "cedente_volume_historico": "Volume Historico",
+                        "cedente_taxa_default": "Taxa Default",
+                        "cedente_ticket_medio": "Ticket Medio",
+                        "score_cedente_proprio": "Score Cedente",
+                    }
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+    st.markdown("#### Cenarios de Teste do Simulador")
+    st.dataframe(scenarios_df, use_container_width=True, hide_index=True)
+
+
+def render_simulator(bundle: dict, form_options: dict[str, list[str]]) -> None:
     st.markdown("### Simulador de Risco Estrutural")
     defaults = bundle["defaults"]
     api_online = api_health()
@@ -479,10 +1023,22 @@ def render_simulator(bundle: dict) -> None:
                     "OUTROS",
                 ],
             )
-            cnpj_sacado = st.text_input("CNPJ do sacado (opcional)", value="")
-            cnpj_cedente = st.text_input("CNPJ do cedente (opcional)", value="")
-            uf_sacado = st.text_input("UF do sacado", value=str(defaults["uf_sacado"]))[:2].upper()
-            uf_cedente = st.text_input("UF do cedente", value=str(defaults["uf_cedente"]))[:2].upper()
+            referencia_pagador = st.text_input("CNPJ ou ID do pagador (opcional)", value="")
+            referencia_beneficiario = st.text_input("CNPJ ou ID do beneficiario (opcional)", value="")
+            uf_sacado = st.selectbox("UF do sacado (opcional)", [""] + form_options["uf_options"], index=0)
+            uf_cedente = st.selectbox("UF do cedente (opcional)", [""] + form_options["uf_options"], index=0)
+            cnae_principal_codigo_sacado = st.selectbox(
+                "Setor/CNAE do sacado (opcional)",
+                [""] + form_options["cnae_sacado_options"],
+                index=0,
+                format_func=format_cnae_option,
+            )
+            cnae_principal_codigo_cedente = st.selectbox(
+                "Setor/CNAE do cedente (opcional)",
+                [""] + form_options["cnae_cedente_options"],
+                index=0,
+                format_func=format_cnae_option,
+            )
 
         with col2:
             media_atraso_dias_sacado = st.number_input(
@@ -506,12 +1062,6 @@ def render_simulator(bundle: dict) -> None:
                 0.0,
                 1.0,
                 float(defaults["sacado_indice_liquidez_1m_sacado"]),
-            )
-            share_vl_inad_pag_bol_6_a_15d_sacado = st.slider(
-                "Share de atrasos curtos do sacado",
-                0.0,
-                1.0,
-                float(defaults["share_vl_inad_pag_bol_6_a_15d_sacado"]),
             )
 
         with col3:
@@ -552,24 +1102,25 @@ def render_simulator(bundle: dict) -> None:
     payload = {
         "vlr_nominal": vlr_nominal,
         "tipo_especie": tipo_especie,
-        "cnpj_sacado": cnpj_sacado.strip() or None,
-        "cnpj_cedente": cnpj_cedente.strip() or None,
+        "referencia_pagador": referencia_pagador.strip() or None,
+        "referencia_beneficiario": referencia_beneficiario.strip() or None,
         "media_atraso_dias_sacado": media_atraso_dias_sacado,
         "score_materialidade_v2_sacado": score_materialidade_v2_sacado,
         "score_quantidade_v2_sacado": score_quantidade_v2_sacado,
         "sacado_indice_liquidez_1m_sacado": sacado_indice_liquidez_1m_sacado,
-        "share_vl_inad_pag_bol_6_a_15d_sacado": share_vl_inad_pag_bol_6_a_15d_sacado,
         "media_atraso_dias_cedente": media_atraso_dias_cedente,
         "score_materialidade_v2_cedente": score_materialidade_v2_cedente,
         "score_quantidade_v2_cedente": score_quantidade_v2_cedente,
         "cedente_indice_liquidez_1m_cedente": cedente_indice_liquidez_1m_cedente,
         "indicador_liquidez_quantitativo_3m_cedente": indicador_liquidez_quantitativo_3m_cedente,
-        "uf_sacado": uf_sacado or defaults["uf_sacado"],
-        "uf_cedente": uf_cedente or defaults["uf_cedente"],
+        "uf_sacado": uf_sacado or None,
+        "uf_cedente": uf_cedente or None,
+        "cnae_principal_codigo_sacado": cnae_principal_codigo_sacado.strip() or None,
+        "cnae_principal_codigo_cedente": cnae_principal_codigo_cedente.strip() or None,
     }
 
-    if payload["cnpj_sacado"] or payload["cnpj_cedente"]:
-        st.caption("CNPJs informados ativam enriquecimento externo: BrasilAPI para cadastro e bureau mock para credito.")
+    if payload["referencia_pagador"] or payload["referencia_beneficiario"]:
+        st.caption("Se a referencia tiver 14 digitos, o sistema trata como CNPJ e tenta enriquecer com BrasilAPI; caso contrario, usa como ID interno.")
 
     if api_online:
         try:
@@ -587,6 +1138,7 @@ def render_simulator(bundle: dict) -> None:
     col3.metric("Decisao", result["status"])
 
     st.info(f"Faixa de risco: {result['faixa_risco']} | Acao: {result['acao_recomendada']}")
+    render_rule_banner(result)
     st.markdown("**Principais fatores observados**")
     for reason in result["motivos_risco"]:
         st.write(f"- {reason}")
@@ -597,11 +1149,13 @@ def render_simulator(bundle: dict) -> None:
 def main() -> None:
     render_header()
     scored, bundle = load_default_portfolio()
+    form_options = build_form_options(scored)
     tab1, tab2 = st.tabs(["Simulador de Risco", "Dashboard Gerencial"])
     with tab1:
-        render_simulator(bundle)
+        render_simulator(bundle, form_options)
     with tab2:
         render_dashboard_html(scored)
+        render_dashboard_insights(scored, bundle)
 
 
 if __name__ == "__main__":

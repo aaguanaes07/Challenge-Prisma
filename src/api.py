@@ -50,6 +50,8 @@ MODEL_BUNDLE = load_or_train_model(BASE_DIR)
 class TituloInput(BaseModel):
     vlr_nominal: float
     tipo_especie: str
+    referencia_pagador: str | None = None
+    referencia_beneficiario: str | None = None
     cnpj_sacado: str | None = None
     cnpj_cedente: str | None = None
     id_sacado: str | None = None
@@ -66,6 +68,8 @@ class TituloInput(BaseModel):
     indicador_liquidez_quantitativo_3m_cedente: float | None = None
     uf_sacado: str | None = None
     uf_cedente: str | None = None
+    cnae_principal_codigo_sacado: str | None = None
+    cnae_principal_codigo_cedente: str | None = None
 
 
 class PortfolioInput(BaseModel):
@@ -139,6 +143,17 @@ def external_enrichment(cnpj: str) -> dict[str, Any]:
 @app.post("/predict")
 def predict_risco(dados: TituloInput) -> dict[str, Any]:
     payload = dados.model_dump()
+    referencia_pagador = payload.pop("referencia_pagador", None)
+    referencia_beneficiario = payload.pop("referencia_beneficiario", None)
+
+    if referencia_pagador and not payload.get("cnpj_sacado") and not payload.get("id_sacado"):
+        ref = str(referencia_pagador).strip()
+        payload["cnpj_sacado" if ref.isdigit() and len(ref) == 14 else "id_sacado"] = ref
+
+    if referencia_beneficiario and not payload.get("cnpj_cedente") and not payload.get("id_cedente"):
+        ref = str(referencia_beneficiario).strip()
+        payload["cnpj_cedente" if ref.isdigit() and len(ref) == 14 else "id_cedente"] = ref
+
     return predict_from_payload(payload, MODEL_BUNDLE)
 
 
