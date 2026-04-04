@@ -767,8 +767,7 @@ def render_header() -> None:
                 <h1>PRISMA | Plataforma de Risco para FIDCs</h1>
             </div>
             <p>
-                MVP funcional para a Sprint 3 com score calibrado, monitoramento da carteira,
-                simulador manual e backend desacoplado via FastAPI.
+                Monitoramento da carteira e simulador manual.
             </p>
             <span class="chip">Analise Estrutural</span>
             <span class="chip">Monitoramento de Carteira</span>
@@ -1178,7 +1177,7 @@ def render_dashboard_insights(scored: pd.DataFrame, bundle: dict[str, Any]) -> N
 
 
 def render_simulator(bundle: dict, form_options: dict[str, list[str]]) -> None:
-    st.markdown("### Simulador de Risco Estrutural")
+    st.markdown("### Simulador de Risco")
     defaults = bundle["defaults"]
     api_online = api_health()
     st.caption(
