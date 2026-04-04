@@ -479,6 +479,8 @@ def render_simulator(bundle: dict) -> None:
                     "OUTROS",
                 ],
             )
+            cnpj_sacado = st.text_input("CNPJ do sacado (opcional)", value="")
+            cnpj_cedente = st.text_input("CNPJ do cedente (opcional)", value="")
             uf_sacado = st.text_input("UF do sacado", value=str(defaults["uf_sacado"]))[:2].upper()
             uf_cedente = st.text_input("UF do cedente", value=str(defaults["uf_cedente"]))[:2].upper()
 
@@ -550,6 +552,8 @@ def render_simulator(bundle: dict) -> None:
     payload = {
         "vlr_nominal": vlr_nominal,
         "tipo_especie": tipo_especie,
+        "cnpj_sacado": cnpj_sacado.strip() or None,
+        "cnpj_cedente": cnpj_cedente.strip() or None,
         "media_atraso_dias_sacado": media_atraso_dias_sacado,
         "score_materialidade_v2_sacado": score_materialidade_v2_sacado,
         "score_quantidade_v2_sacado": score_quantidade_v2_sacado,
@@ -563,6 +567,9 @@ def render_simulator(bundle: dict) -> None:
         "uf_sacado": uf_sacado or defaults["uf_sacado"],
         "uf_cedente": uf_cedente or defaults["uf_cedente"],
     }
+
+    if payload["cnpj_sacado"] or payload["cnpj_cedente"]:
+        st.caption("CNPJs informados ativam enriquecimento externo: BrasilAPI para cadastro e bureau mock para credito.")
 
     if api_online:
         try:

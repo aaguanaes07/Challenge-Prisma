@@ -23,6 +23,21 @@ from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
+try:
+    from .enrichment import (
+        build_company_enrichment,
+        build_model_features_from_profile,
+        mock_external_profile,
+        sanitize_cnpj,
+    )
+except ImportError:
+    from enrichment import (
+        build_company_enrichment,
+        build_model_features_from_profile,
+        mock_external_profile,
+        sanitize_cnpj,
+    )
+
 SRC_DIR = Path(__file__).resolve().parent
 BASE_DIR = SRC_DIR.parent
 ASSETS_DIR = BASE_DIR / "assets"
@@ -53,12 +68,44 @@ NUMERIC_FEATURES = [
     "score_quantidade_v2_cedente",
     "cedente_indice_liquidez_1m_cedente",
     "indicador_liquidez_quantitativo_3m_cedente",
+    "idade_empresa_dias_sacado",
+    "capital_social_sacado",
+    "capital_social_por_valor_titulo_sacado",
+    "qtd_socios_sacado",
+    "empresa_ativa_sacado",
+    "qtd_protestos_12m_sacado",
+    "dias_desde_ultimo_protesto_sacado",
+    "qtd_consultas_credito_30d_sacado",
+    "score_bureau_sacado",
+    "flag_recuperacao_judicial_sacado",
+    "flag_falencia_sacado",
+    "flag_spike_consulta_credito_sacado",
+    "idade_empresa_dias_cedente",
+    "capital_social_cedente",
+    "capital_social_por_valor_titulo_cedente",
+    "qtd_socios_cedente",
+    "empresa_ativa_cedente",
+    "qtd_protestos_12m_cedente",
+    "dias_desde_ultimo_protesto_cedente",
+    "qtd_consultas_credito_30d_cedente",
+    "score_bureau_cedente",
+    "flag_recuperacao_judicial_cedente",
+    "flag_falencia_cedente",
+    "flag_spike_consulta_credito_cedente",
 ]
 
 CATEGORICAL_FEATURES = [
     "tipo_especie",
     "uf_sacado",
     "uf_cedente",
+    "status_cadastral_sacado",
+    "natureza_juridica_sacado",
+    "porte_empresa_sacado",
+    "cnae_principal_codigo_sacado",
+    "status_cadastral_cedente",
+    "natureza_juridica_cedente",
+    "porte_empresa_cedente",
+    "cnae_principal_codigo_cedente",
 ]
 
 FEATURE_COLUMNS = NUMERIC_FEATURES + CATEGORICAL_FEATURES
@@ -75,6 +122,68 @@ def _safe_divide(numerator: float, denominator: float) -> float:
     if denominator == 0:
         return 0.0
     return float(numerator / denominator)
+
+
+def _build_external_feature_frame(
+    entity_ids: pd.Series,
+    nominal_values: pd.Series,
+    role: str,
+) -> pd.DataFrame:
+    rows: list[dict[str, Any]] = []
+    for entity_id, nominal in zip(entity_ids.fillna("Desconhecido"), nominal_values.fillna(0), strict=False):
+        profile = mock_external_profile(str(entity_id), role=role)
+        features = build_model_features_from_profile(profile, nominal_value=float(nominal or 0))
+        rows.append(features)
+    return pd.DataFrame(rows, index=entity_ids.index).add_suffix(f"_{role}")
+
+
+def _apply_external_enrichment(model_df: pd.DataFrame) -> pd.DataFrame:
+    enriched = model_df.copy()
+    sacado_features = _build_external_feature_frame(
+        enriched["id_pagador"],
+        enriched["vlr_nominal"],
+        role="sacado",
+    )
+    cedente_features = _build_external_feature_frame(
+        enriched["id_beneficiario"],
+        enriched["vlr_nominal"],
+        role="cedente",
+    )
+    return pd.concat([enriched, sacado_features, cedente_features], axis=1)
+
+
+def _apply_payload_external_enrichment(payload: dict[str, Any]) -> dict[str, Any]:
+    enriched_payload = dict(payload)
+    nominal = float(enriched_payload.get("vlr_nominal", 0) or 0)
+
+    for role in ("sacado", "cedente"):
+        cnpj_key = f"cnpj_{role}"
+        entity_key = f"id_{role}"
+        cnpj_value = enriched_payload.get(cnpj_key)
+        entity_value = enriched_payload.get(entity_key)
+
+        profile: dict[str, Any] | None = None
+        if cnpj_value:
+            try:
+                profile = build_company_enrichment(sanitize_cnpj(str(cnpj_value)))
+            except Exception:
+                profile = None
+        if profile is None and entity_value:
+            profile = mock_external_profile(str(entity_value), role=role)
+        if profile is None:
+            continue
+
+        feature_map = build_model_features_from_profile(profile, nominal_value=nominal)
+        for key, value in feature_map.items():
+            enriched_payload[f"{key}_{role}"] = value
+
+        receita = profile.get("receita_federal", {})
+        if role == "sacado" and not enriched_payload.get("uf_sacado"):
+            enriched_payload["uf_sacado"] = receita.get("uf")
+        if role == "cedente" and not enriched_payload.get("uf_cedente"):
+            enriched_payload["uf_cedente"] = receita.get("uf")
+
+    return enriched_payload
 
 
 def _load_csvs(base_dir: Path = BASE_DIR) -> tuple[pd.DataFrame, pd.DataFrame]:
@@ -141,6 +250,8 @@ def prepare_model_base(
         how="left",
         suffixes=("_sacado", "_cedente"),
     )
+
+    model_df = _apply_external_enrichment(model_df)
 
     for column in CATEGORICAL_FEATURES:
         model_df[column] = model_df[column].fillna("Desconhecido").astype(str)
@@ -252,7 +363,11 @@ def load_or_train_model(base_dir: Path = BASE_DIR) -> dict[str, Any]:
     for model_file in candidate_paths:
         if model_file.exists():
             try:
-                return joblib.load(model_file)
+                bundle = joblib.load(model_file)
+                bundle_features = bundle.get("feature_columns", [])
+                if list(bundle_features) != list(FEATURE_COLUMNS):
+                    break
+                return bundle
             except Exception:
                 # Em ambientes como Streamlit Cloud, diferencas de versao de
                 # Python ou dependencias podem invalidar artefatos serializados.
@@ -271,6 +386,18 @@ def _resolve_risk_band(probability: float) -> RiskBand:
 
 def _reason_codes(row: pd.Series) -> list[str]:
     reasons: list[str] = []
+    if row.get("flag_recuperacao_judicial_sacado", 0) >= 1:
+        reasons.append("Sacado com indicio de recuperacao judicial no enriquecimento externo")
+    if row.get("flag_falencia_sacado", 0) >= 1:
+        reasons.append("Sacado com indicio de falencia no monitoramento externo")
+    if row.get("qtd_protestos_12m_sacado", 0) >= 3:
+        reasons.append("Sacado com historico relevante de protestos nos ultimos 12 meses")
+    if row.get("flag_spike_consulta_credito_sacado", 0) >= 1:
+        reasons.append("Sacado apresentou pico recente de busca por credito")
+    if str(row.get("status_cadastral_sacado", "")).upper() in {"BAIXADA", "SUSPENSA", "INAPTA"}:
+        reasons.append("Situacao cadastral do sacado fora do padrao esperado")
+    if row.get("capital_social_por_valor_titulo_sacado", 999) < 0.25:
+        reasons.append("Capital social do sacado parece baixo frente ao valor da operacao")
     if row.get("sacado_indice_liquidez_1m_sacado", 1) < 0.35:
         reasons.append("Liquidez recente do sacado abaixo do patamar recomendado")
     if row.get("media_atraso_dias_sacado", 0) > 20:
@@ -357,7 +484,7 @@ def score_portfolio(
 
 def build_manual_input(payload: dict[str, Any], bundle: dict[str, Any]) -> pd.DataFrame:
     record = dict(bundle["defaults"])
-    record.update(payload)
+    record.update(_apply_payload_external_enrichment(payload))
     return pd.DataFrame([record])
 
 
