@@ -36,7 +36,7 @@
       }
 
       body {
-        background-color: var(--bg-color);
+        background-color: transparent;
         color: var(--text-main);
         font-family: "Roboto", sans-serif;
         margin: 0;
@@ -375,6 +375,13 @@
         >
           ⚙️ Visão Tática
         </button>
+        <button
+          class="nav-btn"
+          onclick="switchView('analytic')"
+          id="btn-analytic"
+        >
+          ⚙️ Visão Analítica
+        </button>
       </div>
     </div>
 
@@ -574,6 +581,108 @@
       </div>
     </div>
 
+    <div id="view-analytic" class="view-section">
+      <div class="section-title">
+        Inteligência Analítica: Explicabilidade & Concentração
+      </div>
+
+      <div class="dashboard-grid">
+        <div class="card">
+          <h3>Volume Aprovado</h3>
+          <div class="kpi-value" style="color: var(--brand-green)">
+            __AN_APPROVED_VOLUME__
+          </div>
+          <div class="kpi-badge bg-green">Carteira Elegivel</div>
+          <div class="kpi-sub" style="margin-top: 10px">
+            Volume financeiro com decisao favoravel.
+          </div>
+        </div>
+        <div class="card">
+          <h3>Volume Negado</h3>
+          <div class="kpi-value" style="color: var(--neon-red)">
+            __AN_DENIED_VOLUME__
+          </div>
+          <div class="kpi-badge bg-red">Capital Protegido</div>
+          <div class="kpi-sub" style="margin-top: 10px">
+            Volume barrado pelas regras do PRISMA.
+          </div>
+        </div>
+        <div class="card">
+          <h3>Cedentes em Alerta</h3>
+          <div class="kpi-value" style="color: var(--neon-yellow)">
+            __AN_CEDENTES_ALERTA__
+          </div>
+          <div class="kpi-badge bg-yellow">Default estrutural</div>
+          <div class="kpi-sub" style="margin-top: 10px">
+            Originadores com volume e default acima da regua.
+          </div>
+        </div>
+        <div class="card">
+          <h3>Share Até 5 Dias</h3>
+          <div class="kpi-value" style="color: white">__AN_SHARE_5D__</div>
+          <div class="kpi-badge bg-green">Leitura Operacional</div>
+          <div class="kpi-sub" style="margin-top: 10px">
+            Boletos pagos dentro do corte operacional.
+          </div>
+        </div>
+
+        <div class="card h-medium span-2">
+          <h3>Volume por Classe de Decisão</h3>
+          <canvas id="chartDecisionVolume"></canvas>
+        </div>
+        <div class="card h-medium span-2">
+          <h3>Curva Cumulativa de Atrasos</h3>
+          <canvas id="chartDelayCurve"></canvas>
+        </div>
+
+        <div class="card h-medium span-2">
+          <h3>Comparativo Baseline vs Enriquecido</h3>
+          <div style="overflow-y: auto; padding-right: 5px">
+            __AN_EVOLUTION_TABLE__
+          </div>
+        </div>
+        <div class="card h-medium span-2">
+          <h3>Variáveis Mais Relevantes</h3>
+          <div style="overflow-y: auto; padding-right: 5px">
+            __AN_IMPORTANCE_TABLE__
+          </div>
+        </div>
+
+        <div class="card h-large span-2">
+          <h3>Top Cedentes por Volume</h3>
+          <div style="overflow-y: auto; padding-right: 5px">
+            __AN_TOP_VOLUME_TABLE__
+          </div>
+        </div>
+        <div class="card h-large span-2">
+          <h3>Top Cedentes por Taxa de Risco</h3>
+          <div style="overflow-y: auto; padding-right: 5px">
+            __AN_TOP_RISK_TABLE__
+          </div>
+        </div>
+
+        <div class="card h-large span-2">
+          <h3>Ranking de Ticket Médio</h3>
+          <div style="overflow-y: auto; padding-right: 5px">
+            __AN_TOP_TICKET_TABLE__
+          </div>
+        </div>
+        <div class="card h-large span-2">
+          <h3>Cedentes Alerta</h3>
+          <div style="overflow-y: auto; padding-right: 5px">
+            __AN_ALERT_TABLE__
+          </div>
+        </div>
+
+        <div class="card h-medium span-4">
+          <h3>Cenários de Teste do Simulador</h3>
+          <div style="overflow-y: auto; padding-right: 5px">
+            __AN_SCENARIOS_TABLE__
+          </div>
+        </div>
+      </div>
+    </div>
+
     <div
       style="
         text-align: center;
@@ -604,6 +713,7 @@
       // --- NOVA COR VERDE PROFISSIONAL (#00E096) ---
       const BRAND_GREEN = "#00E096";
       const BRAND_GREEN_DIM = "rgba(0, 224, 150, 0.1)";
+      const BRAND_RED = "#FF3B30";
 
       Chart.defaults.color = "#8F9BA3";
       Chart.defaults.borderColor = "#333";
@@ -655,6 +765,10 @@
           l: "0.05",
         },
       ];
+      const decisionVolumeLabels = __AN_DECISION_LABELS__;
+      const decisionVolumeValues = __AN_DECISION_VALUES__;
+      const delayCurveLabels = __AN_DELAY_LABELS__;
+      const delayCurveValues = __AN_DELAY_VALUES__;
 
       const tbody = document.getElementById("alertTableBody");
       alertsData.forEach((r) => {
@@ -881,6 +995,61 @@
           scales: {
             x: { grid: { color: "#333" } },
             y: { grid: { display: false } },
+          },
+        },
+      });
+
+      new Chart(document.getElementById("chartDecisionVolume"), {
+        type: "bar",
+        data: {
+          labels: decisionVolumeLabels,
+          datasets: [
+            {
+              data: decisionVolumeValues,
+              backgroundColor: [BRAND_GREEN, BRAND_RED],
+              borderRadius: 6,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            datalabels: { display: false },
+          },
+          scales: {
+            x: { grid: { display: false } },
+            y: { ticks: { callback: (value) => `R$ ${value} Mi` } },
+          },
+        },
+      });
+
+      new Chart(document.getElementById("chartDelayCurve"), {
+        type: "line",
+        data: {
+          labels: delayCurveLabels,
+          datasets: [
+            {
+              data: delayCurveValues,
+              borderColor: BRAND_GREEN,
+              backgroundColor: BRAND_GREEN_DIM,
+              fill: true,
+              tension: 0.25,
+              pointRadius: 0,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            datalabels: { display: false },
+          },
+          scales: {
+            x: { title: { display: true, text: "Dias de atraso" } },
+            y: { ticks: { callback: (value) => `${value}%` } },
           },
         },
       });

@@ -348,6 +348,165 @@ def build_dashboard_payload(scored: pd.DataFrame) -> dict:
     }
 
 
+def _format_html_table(df: pd.DataFrame) -> str:
+    if df.empty:
+        return "<div style='color:#8f9ba3;font-size:0.9rem;'>Sem dados disponiveis.</div>"
+    headers = "".join(f"<th>{col}</th>" for col in df.columns)
+    body_rows = []
+    for _, row in df.iterrows():
+        cells = "".join(f"<td>{row[col]}</td>" for col in df.columns)
+        body_rows.append(f"<tr>{cells}</tr>")
+    body = "".join(body_rows)
+    return f"<table class='alert-table'><thead><tr>{headers}</tr></thead><tbody>{body}</tbody></table>"
+
+
+def build_analytic_payload(scored: pd.DataFrame, bundle: dict[str, Any]) -> dict[str, Any]:
+    volume_aprovado = float(scored.loc[scored["decisao_credito"] == "Aprovado", "vlr_nominal"].sum())
+    volume_negado = float(scored.loc[scored["decisao_credito"] == "Negado", "vlr_nominal"].sum())
+
+    volume_decisao = (
+        scored.groupby("decisao_credito", dropna=False)["vlr_nominal"]
+        .sum()
+        .reindex(["Aprovado", "Negado"], fill_value=0)
+    )
+    decision_labels = list(volume_decisao.index)
+    decision_values = [round(float(v / 1_000_000), 2) for v in volume_decisao.values]
+
+    delay_curve = bundle.get("delay_curve", {})
+    delay_days = delay_curve.get("dias", [])
+    delay_values = delay_curve.get("curva_percentual", [])
+    if len(delay_days) > 120:
+        idxs = np.linspace(0, len(delay_days) - 1, 120).astype(int)
+        delay_days = [round(float(delay_days[i]), 1) for i in idxs]
+        delay_values = [round(float(delay_values[i]), 2) for i in idxs]
+    else:
+        delay_days = [round(float(v), 1) for v in delay_days]
+        delay_values = [round(float(v), 2) for v in delay_values]
+
+    evolution_rows = []
+    for key, label in (
+        ("baseline_interno", "Modelo Interno"),
+        ("modelo_enriquecido", "Modelo Enriquecido"),
+    ):
+        metrics = bundle.get("model_evolution", {}).get(key, {}).get("metrics", {})
+        evolution_rows.append(
+            {
+                "Etapa": label,
+                "Acuracia": f"{metrics.get('accuracy', 0) * 100:.2f}%",
+                "Recall": f"{metrics.get('recall', 0) * 100:.2f}%",
+                "Precisao": f"{metrics.get('precision', 0) * 100:.2f}%",
+                "PR AUC": f"{metrics.get('pr_auc', 0):.3f}",
+            }
+        )
+    evolution_df = pd.DataFrame(evolution_rows)
+
+    feature_importance = pd.DataFrame(bundle.get("feature_importance", []))
+    if not feature_importance.empty:
+        feature_importance["Variavel"] = feature_importance["feature"].str.replace(r"^(num|cat)__", "", regex=True)
+        feature_importance["Importancia"] = feature_importance["importance"].map(lambda v: f"{float(v):.4f}")
+        feature_importance = feature_importance[["Variavel", "Importancia"]]
+
+    cedente_view = (
+        scored[[
+            "id_beneficiario",
+            "cedente_volume_historico",
+            "cedente_taxa_default",
+            "cedente_ticket_medio",
+            "score_cedente_proprio",
+        ]]
+        .drop_duplicates("id_beneficiario")
+        .copy()
+    )
+    cedente_view["cedente_taxa_default"] = cedente_view["cedente_taxa_default"].fillna(0)
+    cedentes_alerta = cedente_view[
+        (cedente_view["cedente_volume_historico"].fillna(0) > 5)
+        & (cedente_view["cedente_taxa_default"] > 0.2)
+    ].copy()
+
+    top_fin = (
+        scored.groupby("id_beneficiario", dropna=False)
+        .agg(
+            volume_total=("vlr_nominal", "sum"),
+            ticket_medio=("vlr_nominal", "mean"),
+            taxa_risco=("probabilidade_inadimplencia", "mean"),
+            qtd_boletos=("id_boleto", "count"),
+        )
+        .reset_index()
+    )
+    top_volume = top_fin.sort_values("volume_total", ascending=False).head(10).copy()
+    top_risk = top_fin.sort_values(["taxa_risco", "volume_total"], ascending=[False, False]).head(10).copy()
+    top_ticket = top_fin.sort_values("ticket_medio", ascending=False).head(10).copy()
+
+    for df in (top_volume, top_risk, top_ticket):
+        df["volume_total"] = df["volume_total"].map(format_currency_compact)
+        df["ticket_medio"] = df["ticket_medio"].map(format_currency_compact)
+        df["taxa_risco"] = df["taxa_risco"].map(lambda v: f"{float(v) * 100:.2f}%")
+
+    if not cedentes_alerta.empty:
+        cedentes_alerta["cedente_taxa_default"] = cedentes_alerta["cedente_taxa_default"].map(lambda v: f"{float(v) * 100:.2f}%")
+        cedentes_alerta["cedente_ticket_medio"] = cedentes_alerta["cedente_ticket_medio"].map(format_currency_compact)
+        cedentes_alerta["score_cedente_proprio"] = cedentes_alerta["score_cedente_proprio"].map(lambda v: f"{float(v):.0f}")
+
+    cenarios = [
+        ("Ativo saudavel", {
+            "vlr_nominal": 15000.0, "tipo_especie": "DM DUPLICATA MERCANTIL",
+            "referencia_pagador": "cenario-saudavel-pagador", "referencia_beneficiario": "cenario-saudavel-cedente",
+            "media_atraso_dias_sacado": 2.0, "score_materialidade_v2_sacado": 850.0,
+            "score_quantidade_v2_sacado": 880.0, "sacado_indice_liquidez_1m_sacado": 0.85,
+            "media_atraso_dias_cedente": 2.0, "score_materialidade_v2_cedente": 850.0,
+            "score_quantidade_v2_cedente": 860.0, "cedente_indice_liquidez_1m_cedente": 0.82,
+            "indicador_liquidez_quantitativo_3m_cedente": 0.80,
+        }),
+        ("Ativo estressado", {
+            "vlr_nominal": 80000.0, "tipo_especie": "DM DUPLICATA MERCANTIL",
+            "referencia_pagador": "cenario-ruim-pagador", "referencia_beneficiario": "cenario-ruim-cedente",
+            "media_atraso_dias_sacado": 90.0, "score_materialidade_v2_sacado": 120.0,
+            "score_quantidade_v2_sacado": 80.0, "sacado_indice_liquidez_1m_sacado": 0.10,
+            "media_atraso_dias_cedente": 40.0, "score_materialidade_v2_cedente": 200.0,
+            "score_quantidade_v2_cedente": 180.0, "cedente_indice_liquidez_1m_cedente": 0.18,
+            "indicador_liquidez_quantitativo_3m_cedente": 0.15,
+        }),
+        ("Ativo limitrofe", {
+            "vlr_nominal": 18000.0, "tipo_especie": "DM DUPLICATA MERCANTIL",
+            "referencia_pagador": "cenario-bbb-pagador", "referencia_beneficiario": "cenario-bbb-cedente",
+            "media_atraso_dias_sacado": 12.0, "score_materialidade_v2_sacado": 580.0,
+            "score_quantidade_v2_sacado": 650.0, "sacado_indice_liquidez_1m_sacado": 0.68,
+            "media_atraso_dias_cedente": 7.0, "score_materialidade_v2_cedente": 720.0,
+            "score_quantidade_v2_cedente": 760.0, "cedente_indice_liquidez_1m_cedente": 0.75,
+            "indicador_liquidez_quantitativo_3m_cedente": 0.72,
+        }),
+    ]
+    scenario_rows = []
+    for nome, payload in cenarios:
+        result = predict_from_payload(payload, bundle)
+        scenario_rows.append({
+            "Cenario": nome,
+            "Probabilidade": f"{result['probabilidade_inadimplencia']:.2f}%",
+            "Decisao": result["status"],
+            "Regua": f"{result['regua_inadimplencia_aplicada']:.0f}%",
+            "Acao": result["acao_recomendada"],
+        })
+
+    return {
+        "approved_volume": format_currency_compact(volume_aprovado),
+        "denied_volume": format_currency_compact(volume_negado),
+        "cedentes_alerta": str(len(cedentes_alerta)),
+        "share_5d": f"{delay_curve.get('share_ate_threshold', 0) * 100:.1f}%",
+        "delay_caption": f"{delay_curve.get('share_ate_threshold', 0) * 100:.2f}% dos boletos pagos ficaram em ate {delay_curve.get('threshold_dias', 5)} dias de atraso.",
+        "decision_labels": decision_labels,
+        "decision_values": decision_values,
+        "delay_labels": delay_days,
+        "delay_values": delay_values,
+        "evolution_table": _format_html_table(evolution_df),
+        "importance_table": _format_html_table(feature_importance),
+        "top_volume_table": _format_html_table(top_volume.rename(columns={"id_beneficiario": "Cedente", "volume_total": "Volume Total", "ticket_medio": "Ticket Medio", "taxa_risco": "Taxa de Risco", "qtd_boletos": "Qtd Boletos"})),
+        "top_risk_table": _format_html_table(top_risk.rename(columns={"id_beneficiario": "Cedente", "volume_total": "Volume Total", "ticket_medio": "Ticket Medio", "taxa_risco": "Taxa de Risco", "qtd_boletos": "Qtd Boletos"})),
+        "top_ticket_table": _format_html_table(top_ticket.rename(columns={"id_beneficiario": "Cedente", "volume_total": "Volume Total", "ticket_medio": "Ticket Medio", "taxa_risco": "Taxa de Risco", "qtd_boletos": "Qtd Boletos"})),
+        "alert_table": _format_html_table(cedentes_alerta.rename(columns={"id_beneficiario": "Cedente", "cedente_volume_historico": "Volume Historico", "cedente_taxa_default": "Taxa Default", "cedente_ticket_medio": "Ticket Medio", "score_cedente_proprio": "Score Cedente"})),
+        "scenarios_table": _format_html_table(pd.DataFrame(scenario_rows)),
+    }
+
+
 def render_header() -> None:
     logo_with_name = image_to_data_uri(find_logo_path(with_name=True))
     logo_without_name = image_to_data_uri(find_logo_path(with_name=False))
@@ -624,6 +783,8 @@ def render_dashboard_html(scored: pd.DataFrame) -> None:
         with open(DASHBOARD_DIR / "index.html", "r", encoding="utf-8") as file:
             html_dashboard = file.read()
         payload = build_dashboard_payload(scored)
+        bundle = get_model_bundle()
+        analytic = build_analytic_payload(scored, bundle)
         logo_with_name = image_to_data_uri(find_logo_path(with_name=True))
         logo_without_name = image_to_data_uri(find_logo_path(with_name=False))
         dashboard_logo = logo_without_name or logo_with_name
@@ -741,7 +902,23 @@ def render_dashboard_html(scored: pd.DataFrame) -> None:
             "backgroundColor: ['#FF3B30', '#FF3B30', BRAND_GREEN, BRAND_GREEN, '#238666'],",
             f"backgroundColor: {json.dumps(payload['sector_colors'])},",
         )
-        components.html(html_dashboard, height=1450, scrolling=True)
+        html_dashboard = html_dashboard.replace("__AN_APPROVED_VOLUME__", analytic["approved_volume"])
+        html_dashboard = html_dashboard.replace("__AN_DENIED_VOLUME__", analytic["denied_volume"])
+        html_dashboard = html_dashboard.replace("__AN_CEDENTES_ALERTA__", analytic["cedentes_alerta"])
+        html_dashboard = html_dashboard.replace("__AN_SHARE_5D__", analytic["share_5d"])
+        html_dashboard = html_dashboard.replace("__AN_DELAY_CAPTION__", analytic["delay_caption"])
+        html_dashboard = html_dashboard.replace("__AN_EVOLUTION_TABLE__", analytic["evolution_table"])
+        html_dashboard = html_dashboard.replace("__AN_IMPORTANCE_TABLE__", analytic["importance_table"])
+        html_dashboard = html_dashboard.replace("__AN_TOP_VOLUME_TABLE__", analytic["top_volume_table"])
+        html_dashboard = html_dashboard.replace("__AN_TOP_RISK_TABLE__", analytic["top_risk_table"])
+        html_dashboard = html_dashboard.replace("__AN_TOP_TICKET_TABLE__", analytic["top_ticket_table"])
+        html_dashboard = html_dashboard.replace("__AN_ALERT_TABLE__", analytic["alert_table"])
+        html_dashboard = html_dashboard.replace("__AN_SCENARIOS_TABLE__", analytic["scenarios_table"])
+        html_dashboard = html_dashboard.replace("__AN_DECISION_LABELS__", json.dumps(analytic["decision_labels"], ensure_ascii=False))
+        html_dashboard = html_dashboard.replace("__AN_DECISION_VALUES__", json.dumps(analytic["decision_values"]))
+        html_dashboard = html_dashboard.replace("__AN_DELAY_LABELS__", json.dumps(analytic["delay_labels"]))
+        html_dashboard = html_dashboard.replace("__AN_DELAY_VALUES__", json.dumps(analytic["delay_values"]))
+        components.html(html_dashboard, height=2200, scrolling=True)
     except FileNotFoundError:
         st.error("Arquivo 'index.html' não encontrado.")
 
@@ -1155,7 +1332,6 @@ def main() -> None:
         render_simulator(bundle, form_options)
     with tab2:
         render_dashboard_html(scored)
-        render_dashboard_insights(scored, bundle)
 
 
 if __name__ == "__main__":

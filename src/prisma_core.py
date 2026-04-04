@@ -181,7 +181,7 @@ def _build_nominal_reference(boletos: pd.DataFrame) -> dict[str, Any]:
 
 def _build_delay_curve(boletos: pd.DataFrame) -> dict[str, Any]:
     atraso = pd.to_numeric(boletos.get("dias_atraso_real"), errors="coerce")
-    atraso = atraso[atraso.notna() & (atraso >= 0)].sort_values()
+    atraso = atraso[atraso.notna() & (atraso >= 0)]
     if atraso.empty:
         return {
             "dias": [],
@@ -190,11 +190,12 @@ def _build_delay_curve(boletos: pd.DataFrame) -> dict[str, Any]:
             "share_ate_threshold": 0.0,
         }
 
-    yvals = np.arange(len(atraso)) / max(len(atraso) - 1, 1)
+    atraso_por_dia = atraso.round().astype(int).value_counts().sort_index()
+    cumulative = (atraso_por_dia.cumsum() / atraso_por_dia.sum()) * 100
     share_ate_5 = float((atraso <= 5).mean())
     return {
-        "dias": atraso.astype(float).tolist(),
-        "curva_percentual": (yvals * 100).astype(float).tolist(),
+        "dias": atraso_por_dia.index.astype(float).tolist(),
+        "curva_percentual": cumulative.astype(float).tolist(),
         "threshold_dias": 5,
         "share_ate_threshold": share_ate_5,
     }
@@ -647,6 +648,9 @@ def load_or_train_model(base_dir: Path = BASE_DIR) -> dict[str, Any]:
                 if "nominal_reference" not in bundle:
                     break
                 if "cedente_intelligence" not in bundle or "model_evolution" not in bundle:
+                    break
+                delay_days = bundle.get("delay_curve", {}).get("dias", [])
+                if delay_days and len(delay_days) != len(set(delay_days)):
                     break
                 return bundle
             except Exception:
